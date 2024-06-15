@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { jsPDF } from 'jspdf';
+import { save, open } from '@tauri-apps/api/dialog';
+import { downloadDir } from '@tauri-apps/api/path';
+import { writeBinaryFile, readBinaryFile } from '@tauri-apps/api/fs';
 
 interface rifaDetailsType {
   quantity: number,
@@ -9,7 +12,7 @@ interface rifaDetailsType {
   secondPrize: string,
   thirdPrize: string,
   price: string,
-  logo: File | undefined
+  logo: Uint8Array
 };
 
 // https://stackoverflow.com/a/26047748
@@ -54,7 +57,6 @@ function drawCard(ctx: CanvasRenderingContext2D, originY: number, rifaNumber: st
 
   ctx.fillText('Nombre: ', -90 - originY, 26);
   ctx.fillText('Cel: ', -108 - originY, 50);
-
   ctx.fillText('N°: ' + rifaNumber.padStart(3, '0'), -97 - originY, 120);
 
   ctx.restore();
@@ -82,47 +84,56 @@ function drawInformation(ctx: CanvasRenderingContext2D, originY: number, rifaDet
   ctx.drawImage(logo, 595 - 70, originY + 1, 70, 70);
 }
 
-export function Canvas(props: { rifaDetails: rifaDetailsType }) {
+export function Canvas(props: { rifaDetails: rifaDetailsType, cleanUp: () => void }) {
   const canvasRef = useRef(null);
 
   useEffect(() => {
     if (canvasRef.current) {
       const canvas = canvasRef.current as HTMLCanvasElement;
-
       setDPI(canvas, 300);
-
       const ctx = canvas?.getContext('2d');
+
       if (ctx) {
+        // Clear canvas
         ctx.clearRect(0, 0, 595, 842);
 
+        // Create PDF
         const doc = new jsPDF({
           compress: true
         });
 
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const logo = new Image();
-          if (event.target?.result) {
-            logo.src = event.target?.result.toString();
-            logo.onload = () => {
-              let rifaNumber = 0;
-              for (let i = 0; i < props.rifaDetails.quantity; i++) {
-                for (let i = 0; i < 5; i++) {
-                  rifaNumber++;
-                  drawCard(ctx, i * 146, rifaNumber.toString());
-                  drawInformation(ctx, i * 146, props.rifaDetails, logo)
-                }
-
-                doc.addImage(canvas?.toDataURL('image/png'), 'PNG', 0, 0, 210, 297);
-                if (i < props.rifaDetails.quantity - 1) doc.addPage();
-                ctx.clearRect(0, 0, 595, 842);
+        // Load logo
+        const logo = new Image();
+        if (props.rifaDetails.logo) {
+          logo.src = URL.createObjectURL(new Blob([props.rifaDetails.logo], { type: 'image/png' }));
+          logo.onload = async () => {
+            // Create all the pages
+            let rifaNumber = 0;
+            for (let i = 0; i < props.rifaDetails.quantity; i++) {
+              for (let i = 0; i < 5; i++) {
+                rifaNumber++;
+                drawCard(ctx, i * 146, rifaNumber.toString());
+                drawInformation(ctx, i * 146, props.rifaDetails, logo)
               }
-              doc.save('rifas.pdf');
+
+              // Add page to PDF
+              doc.addImage(canvas?.toDataURL('image/png'), 'PNG', 0, 0, 210, 297);
+              if (i < props.rifaDetails.quantity - 1) doc.addPage();
+
+              // Clear canvas (again)
+              ctx.clearRect(0, 0, 595, 842);
             }
+
+            // Request save dialog and then save
+            const filePath = await save({
+              defaultPath: (await downloadDir()) + "/" + 'rifas.pdf',
+            });
+            if (filePath) await writeBinaryFile(filePath, doc.output('arraybuffer'));
+
+            // Clean up
+            props.cleanUp();
           }
         }
-
-        if (props.rifaDetails.logo) reader.readAsDataURL(props.rifaDetails.logo);
       }
     }
   }, []);
@@ -132,47 +143,78 @@ export function Canvas(props: { rifaDetails: rifaDetailsType }) {
 
 export function App() {
 
-  const [quantity, setQuantity] = useState(0);
+  const [quantity, setQuantity] = useState(1);
   const [organizationName, setOrganizationName] = useState('');
   const [rifaName, setRifaName] = useState('');
   const [price, setPrice] = useState('');
   const [firstPrize, setFirstPrize] = useState('');
   const [secondPrize, setSecondPrize] = useState('');
   const [thirdPrize, setThirdPrize] = useState('');
-  const [logo, setLogo] = useState<File>();
+  const [logo, setLogo] = useState<Uint8Array>();
+  const [logoName, setLogoName] = useState('');
 
   const [created, setCreated] = useState(false);
+
+  function cleanUp() {
+    setQuantity(1);
+    setOrganizationName('');
+    setRifaName('');
+    setPrice('');
+    setFirstPrize('');
+    setSecondPrize('');
+    setThirdPrize('');
+    setLogo(undefined);
+    setLogoName('')
+
+    setCreated(false);
+
+    return;
+  }
 
   return (
     <>
       <form class="container mx-auto p-4 flex flex-col" onSubmit={() => setCreated(true)} method="dialog">
         <h1 class="text-4xl mb-4">Generador Rifas PS</h1>
 
-        <label for="quantity">Cantidad de páginas | <b>5 rifas / página</b>: </label>
-        <input type="number" id="quantity" name="quantity" class="border p-2 mb-4" onInput={(event) => setQuantity(Number(event.currentTarget.value))} value={quantity} required />
+        <label for="quantity">Cantidad de páginas* | <b>5 rifas / página</b> </label>
+        <input type="number" min={1} id="quantity" name="quantity" class="border p-2 mb-4" onInput={(event) => setQuantity(Number(event.currentTarget.value))} value={quantity} required />
 
-        <label for="organizationName">Nombre de la organización: </label>
+        <label for="organizationName">Nombre de la organización* </label>
         <input type="text" id="organizationName" name="organizationName" class="border p-2 mb-4" onInput={(event) => setOrganizationName(event.currentTarget.value)} value={organizationName} required />
 
-        <label for="logo">Logo:</label>
-        <input type="file" id="logo" name="logo" accept="image/png, image/jpeg" class="mb-4" onInput={(event) => setLogo(event.currentTarget.files ? event.currentTarget.files[0] : undefined)} required />
+        <input type="button" value={!logo ? 'Elegir logo*' : 'Seleccionado: ' + logoName} id="logo" name="logo" class={'mb-4 border rounded p-2 text-white ' + (logo ? 'bg-cyan-500 hover:bg-cyan-600 active:bg-cyan-700' : 'bg-gray-500 hover:bg-gray-600 active:bg-gray-700')} onClick={async () => {
+         // Request open dialog
+         const selected = await open({
+            filters: [{
+              name: 'Image',
+              extensions: ['png']
+            }]
+          });
 
-        <label for="rifaName">Nombre de la rifa: </label>
+          // Open file and use a text input to validate the form
+          if (typeof selected === 'string') readBinaryFile(selected).then(file => {
+            setLogo(file);
+            setLogoName(selected);
+          });
+        }} />
+        <input type="text" value={logoName} required hidden />
+
+        <label for="rifaName">Nombre de la rifa* </label>
         <input type="text" id="rifaName" name="rifaName" class="border p-2 mb-4" onInput={(event) => setRifaName(event.currentTarget.value)} value={rifaName} required />
 
-        <label for="price">Precio: </label>
+        <label for="price">Precio* </label>
         <input type="text" id="price" name="price" class="border p-2 mb-4" onInput={(event) => setPrice(event.currentTarget.value)} value={price} required />
 
-        <label for="firstPrize">Primer premio: </label>
+        <label for="firstPrize">Primer premio* </label>
         <input type="text" id="firstPrize" name="firstPrize" class="border p-2 mb-4" onInput={(event) => setFirstPrize(event.currentTarget.value)} value={firstPrize} required />
 
-        <label for="secondPrize">Segundo premio: </label>
+        <label for="secondPrize">Segundo premio* </label>
         <input type="text" id="secondPrize" name="secondPrize" class="border p-2 mb-4" onInput={(event) => setSecondPrize(event.currentTarget.value)} value={secondPrize} required />
 
-        <label for="thirdPrize">Tercer premio: </label>
+        <label for="thirdPrize">Tercer premio* </label>
         <input type="text" id="thirdPrize" name="thirdPrize" class="border p-2" onInput={(event) => setThirdPrize(event.currentTarget.value)} value={thirdPrize} required />
 
-        <input type="submit" value="Guardar PDF" class="border rounded-lg p-4 m-4 bg-teal-500 hover:bg-teal-600 active:bg-teal-700 text-white" />
+        <input type="submit" value="Guardar PDF" class={'border rounded-lg p-4 m-4 text-white ' + ((quantity && organizationName && rifaName && price && firstPrize && secondPrize && thirdPrize && logo) ? 'bg-teal-500 hover:bg-teal-600 active:bg-teal-700' : 'bg-red-500 hover:bg-red-600 active:bg-red-700')} />
       </form>
       {created ? <Canvas rifaDetails={{
         quantity: quantity,
@@ -182,8 +224,8 @@ export function App() {
         firstPrize: firstPrize,
         secondPrize: secondPrize,
         thirdPrize: thirdPrize,
-        logo: logo
-      }} /> : null}
+        logo: logo!
+      }} cleanUp={cleanUp} /> : null}
     </>
   )
 }

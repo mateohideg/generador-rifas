@@ -56,7 +56,7 @@ jobs:
         with:
           tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version.
           releaseName: 'Generador Rifas PS v__VERSION__'
-          releaseBody: 'Descarga la versión correspondiente a su sistema operativo aquí.'
+          releaseBody: 'Descargue la versión correspondiente a su sistema operativo aquí.'
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
