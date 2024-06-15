@@ -49,7 +49,7 @@ function drawCard(ctx: CanvasRenderingContext2D, originY: number, rifaNumber: st
   ctx.stroke();
 
   // Permanent text
-  ctx.font = '18px sans-serif';
+  ctx.font = '18px serif';
   ctx.textAlign = 'center';
   ctx.save();
 
@@ -64,11 +64,11 @@ function drawCard(ctx: CanvasRenderingContext2D, originY: number, rifaNumber: st
 
 function drawInformation(ctx: CanvasRenderingContext2D, originY: number, rifaDetails: rifaDetailsType, logo: HTMLImageElement) {
   // Organizaton name
-  ctx.font = '24px sans-serif';
+  ctx.font = '24px serif';
   ctx.fillText(rifaDetails.organizationName, 143 + 382 / 2, originY + 30);
 
   // Rifa name
-  ctx.font = '18px sans-serif';
+  ctx.font = '18px serif';
   ctx.textAlign = 'left';
   ctx.fillText(rifaDetails.rifaName, 143 + 24, originY + 54);
 
