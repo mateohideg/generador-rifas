@@ -1,5 +1,5 @@
 import { defineConfig } from 'vite'
-import preact from '@preact/preset-vite'
+import solid from 'vite-plugin-solid'
 
 export default defineConfig({
   // prevent vite from obscuring rust errors
@@ -18,5 +18,5 @@ export default defineConfig({
     // produce sourcemaps for debug builds
     sourcemap: !!process.env.TAURI_DEBUG,
   },
-  plugins: [preact()],
+  plugins: [solid()],
 })
