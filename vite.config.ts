@@ -19,4 +19,7 @@ export default defineConfig({
     sourcemap: !!process.env.TAURI_DEBUG,
   },
   plugins: [solid()],
+  worker: {
+    format: 'es'
+  }
 })
