@@ -13,52 +13,82 @@ function App() {
   const [thirdPrize, setThirdPrize] = createSignal('');
   const [logo, setLogo] = createSignal<Uint8Array>();
   const [logoName, setLogoName] = createSignal('');
-
   const [savingDialog, setSavingDialog] = createSignal(false);
+
+  // Set up Web Workers
+  const [workers, setWorkers] = createSignal<Worker[]>([]);
+  const [completedWorkers, setCompletedWorkers] = createSignal<{
+    index: number,
+    content: ArrayBuffer
+  }[]>([]);
+  const [progressArray, setProgressArray] = createSignal<number[]>([]);
   const [progress, setProgress] = createSignal(0);
 
-  // Set up Web Worker
-  const [worker, setWorker] = createSignal<Worker | null>(null);
-  setWorker(new Worker(new URL('./worker.ts', import.meta.url), {
+  const newWorkers = Array.from({ length: navigator.hardwareConcurrency }, () => new Worker(new URL('./worker.ts', import.meta.url), {
     type: 'module',
   }));
+  setWorkers(newWorkers);
 
   onCleanup(() => {
-    if (worker()) {
-      worker()?.terminate();
-    }
+    workers().forEach(worker => worker.terminate());
   });
 
   createEffect(() => {
-    worker()!.onmessage = async (event) => {
-      if (event.data.type === 'raffleNumber') {
-        setProgress(Math.round(event.data.content / (quantity() * 5) * 100));
-      } else if (event.data.type === 'file') {
-        // Save file
-        const filePath = await save({
-          filters: [{
-            name: 'PDF',
-            extensions: ['pdf']
-          }]
-        });
-        if (filePath) await writeBinaryFile(filePath, event.data.content);
+    setProgress(() => {
+      const progressPre = progressArray().reduce((previousValue, currentValue) => previousValue + currentValue, 0) / progressArray().length;
+      const progress = !isNaN(progressPre) ? Math.round(progressPre) : 0;
+      return progress;
+    });
+  }, [progressArray]);
 
-        // Clean up
-        setQuantity(1);
-        setOrganizationName('');
-        setRaffleName('');
-        setPrice('');
-        setFirstPrize('');
-        setSecondPrize('');
-        setThirdPrize('');
-        setLogo(undefined);
-        setLogoName('');
-        setProgress(0);
+  createEffect(() => {
+    newWorkers.forEach((worker, index) => {
+      worker.onmessage = async (event) => {
+        if (event.data.type === 'progress') {
+          // Update progress for this Web Worker
+          setProgressArray(prev => {
+            const newProgress = [...prev];
+            newProgress[index] = event.data.progress;
+            return newProgress;
+          });
+        } else if (event.data.type === 'complete') {
+          setCompletedWorkers(prev => {
+            const newPrev = [...prev];
+            newPrev.push({ index: index, content: event.data.content });
+            return newPrev;
+          });
+          if (completedWorkers().length === workers().length) {
+            worker.postMessage({
+              completedWorkers: completedWorkers()
+            });
+          }
+        } else if (event.data.type === 'file') {
+          // Save file
+          const filePath = await save({
+            filters: [{
+              name: 'PDF',
+              extensions: ['pdf']
+            }]
+          });
+          if (filePath) await writeBinaryFile(filePath, event.data.content);
 
-        // Close dialog
-        setSavingDialog(false);
+          // Clean up
+          setQuantity(1);
+          setOrganizationName('');
+          setRaffleName('');
+          setPrice('');
+          setFirstPrize('');
+          setSecondPrize('');
+          setThirdPrize('');
+          setLogo(undefined);
+          setLogoName('');
+          setProgressArray([]);
+
+          // Close dialog
+          setSavingDialog(false);
+        }
       }
-    }
+    });
   }, []);
 
   return (
@@ -74,12 +104,18 @@ function App() {
       </Box>
 
       <Stack component="form" p={2} onSubmit={async () => {
-        if (worker()) {
-          // Open dialog
-          setSavingDialog(true);
+        // Open dialog
+        setSavingDialog(true);
 
-          // Send data to the Web Worker
-          worker()?.postMessage({
+        // Web Worker shenanigans
+        const pagesPerWorker = Math.ceil(quantity() / workers().length);
+        workers().forEach((worker, index) => {
+          const startPage = index * pagesPerWorker;
+          const endPage = Math.min((index + 1) * pagesPerWorker, quantity());
+
+          worker.postMessage({
+            startPage,
+            endPage,
             raffleDetails: {
               quantity: quantity(),
               organizationName: organizationName(),
@@ -91,7 +127,7 @@ function App() {
               logo: logo()
             }
           });
-        }
+        });
       }} method="dialog">
         <TextField type="number" label="Cantidad de páginas" margin="normal" onChange={(event) => {
           const value = Number(event.currentTarget.value);
@@ -134,7 +170,9 @@ function App() {
         </DialogTitle>
         <DialogContent>
           <LinearProgress variant="determinate" value={progress()} />
-          <DialogContentText>
+          <DialogContentText sx={{
+            marginTop: '8px'
+          }}>
             {progress()}%
           </DialogContentText>
         </DialogContent>

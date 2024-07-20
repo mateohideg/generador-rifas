@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import { PDFDocument } from 'pdf-lib';
 import OpenSans from './Open_Sans/OpenSans-VariableFont_wdth,wght.ttf';
 
 function setDPI(canvas: OffscreenCanvas, dpi: number) {
@@ -84,8 +85,34 @@ function drawInformation(ctx: OffscreenCanvasRenderingContext2D, originY: number
     ctx.drawImage(logo, 595 - 70, originY + 1, 70, 70);
 }
 
-self.onmessage = async (event: MessageEvent<{ raffleDetails: raffleDetailsType }>) => {
-    const { raffleDetails } = event.data;
+self.onmessage = async (event: MessageEvent<{
+    startPage: number; endPage: number; raffleDetails: raffleDetailsType; completedWorkers?: {
+        index: number,
+        content: ArrayBuffer
+    }[]
+}>) => {
+    if (event.data.completedWorkers) {
+        const mergedPdf = await PDFDocument.create();
+
+        for (const pdfBuffer of event.data.completedWorkers.sort((a, b) => a.index - b.index).map(x => x.content)) {
+            const pdf = await PDFDocument.load(pdfBuffer);
+            const copiedPages = await mergedPdf.copyPages(pdf, pdf.getPageIndices());
+            for (const page of copiedPages) {
+                mergedPdf.addPage(page);
+            }
+        }
+
+        const mergedPdfFile = await mergedPdf.save();
+
+        self.postMessage({
+            type: 'file',
+            content: mergedPdfFile
+        });
+
+        return;
+    }
+
+    const { startPage, endPage, raffleDetails } = event.data;
 
     const offscreenCanvas = new OffscreenCanvas(595, 842);
     setDPI(offscreenCanvas, 300);
@@ -109,10 +136,14 @@ self.onmessage = async (event: MessageEvent<{ raffleDetails: raffleDetailsType }
     const f = new FontFace("OpenSans", await (await fetch(OpenSans)).arrayBuffer());
     await f.load();
     self.fonts.add(f);
-    
-    // Create all the pages
-    let raffleNumber = 0;
-    for (let i = 0; i < raffleDetails.quantity; i++) {
+
+    // Create the pages
+    let raffleNumber = startPage * 5;
+
+    for (let page = startPage; page < endPage; page++) {
+        // Clear canvas
+        ctx.clearRect(0, 0, 595, 842);
+
         for (let i = 0; i < 5; i++) {
             raffleNumber++;
             drawCard(ctx, i * 146, raffleNumber.toString());
@@ -123,22 +154,21 @@ self.onmessage = async (event: MessageEvent<{ raffleDetails: raffleDetailsType }
         const blob = await offscreenCanvas.convertToBlob();
         const bytes = await blob.arrayBuffer();
         const pdfBytes = new Uint8Array(bytes);
+
         doc.addImage(pdfBytes, 'PNG', 0, 0, 210, 297);
-        if (i < raffleDetails.quantity - 1) doc.addPage();
 
-        // Clear canvas (again)
-        ctx.clearRect(0, 0, 595, 842);
+        if (page < event.data.endPage - 1) doc.addPage();
 
-        // Send raffleNumber (for progrss bar)
+        // Send progress
         self.postMessage({
-            type: 'raffleNumber',
-            content: raffleNumber
+            type: 'progress',
+            progress: ((page - startPage + 1) / (endPage - startPage)) * 100
         });
     }
 
-    // Send PDF to the main thread
+    // Send image to the main thread
     self.postMessage({
-        type: 'file',
+        type: 'complete',
         content: doc.output('arraybuffer')
     });
 };
