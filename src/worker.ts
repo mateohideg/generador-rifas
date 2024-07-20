@@ -1,4 +1,5 @@
 import { jsPDF } from 'jspdf';
+import OpenSans from './Open_Sans/OpenSans-VariableFont_wdth,wght.ttf';
 
 function setDPI(canvas: OffscreenCanvas, dpi: number) {
     // Get the original width and height of the canvas
@@ -15,7 +16,7 @@ function setDPI(canvas: OffscreenCanvas, dpi: number) {
     ctx?.scale(scaleFactor, scaleFactor);
 }
 
-function drawCard(ctx: OffscreenCanvasRenderingContext2D, originY: number, rifaNumber: string) {
+function drawCard(ctx: OffscreenCanvasRenderingContext2D, originY: number, raffleNumber: string) {
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 1;
 
@@ -35,7 +36,7 @@ function drawCard(ctx: OffscreenCanvasRenderingContext2D, originY: number, rifaN
     ctx.stroke();
 
     // Default text style
-    ctx.font = '18px serif';
+    ctx.font = '18px OpenSans';
     ctx.textAlign = 'center';
     ctx.save();
 
@@ -44,38 +45,47 @@ function drawCard(ctx: OffscreenCanvasRenderingContext2D, originY: number, rifaN
     ctx.translate(0, originY + 129);
     ctx.rotate(-Math.PI / 2);
 
-    ctx.fillText('Nombre: ', 0, 26);
+    ctx.fillText('N: ', 0, 26);
     ctx.fillText('Cel: ', 0, 50);
-    ctx.fillText('N°: ' + rifaNumber.padStart(3, '0'), 0, 129);
+    ctx.fillText('N° ' + raffleNumber.padStart(3, '0'), 0, 129);
 
-    // Restore to the default text style
+    // Number watermark
     ctx.restore();
+    ctx.font = '32px OpenSans';
+    ctx.fillStyle = '#e6e6e6';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('N° ' + raffleNumber.padStart(3, '0'), 143 + 382 / 2, originY + 141 / 2);
+
+    // Restore the default text style
+    ctx.restore();
+    ctx.fillStyle = 'black';
+    ctx.textBaseline = 'alphabetic';
 }
 
-function drawInformation(ctx: OffscreenCanvasRenderingContext2D, originY: number, rifaDetails: rifaDetailsType, logo: ImageBitmap) {
+function drawInformation(ctx: OffscreenCanvasRenderingContext2D, originY: number, raffleDetails: raffleDetailsType, logo: ImageBitmap) {
     // Organizaton name
-    ctx.font = '24px serif';
-    ctx.fillText(rifaDetails.organizationName, 143 + 382 / 2, originY + 30);
+    ctx.font = '24px OpenSans';
+    ctx.fillText(raffleDetails.organizationName, 143 + 382 / 2, originY + 30);
 
-    // Rifa name
-    ctx.font = '18px serif';
+    // Raffle name
+    ctx.font = '18px OpenSans';
     ctx.textAlign = 'left';
-    ctx.fillText(rifaDetails.rifaName, 143 + 24, originY + 54);
+    ctx.fillText(raffleDetails.raffleName, 143 + 12, originY + 54);
 
     // Prizes list
-    ctx.fillText('Premio 1: ' + rifaDetails.firstPrize, 143 + 24, originY + 78);
-    ctx.fillText('Premio 2: ' + rifaDetails.secondPrize, 143 + 24, originY + 102);
-    ctx.fillText('Premio 3: ' + rifaDetails.thirdPrize, 143 + 24, originY + 126);
+    ctx.fillText('Premio 1: ' + raffleDetails.firstPrize, 143 + 12, originY + 78);
+    ctx.fillText('Premio 2: ' + raffleDetails.secondPrize, 143 + 12, originY + 102);
+    ctx.fillText('Premio 3: ' + raffleDetails.thirdPrize, 143 + 12, originY + 126);
 
     // Price
-    ctx.fillText(rifaDetails.price, 559 - ctx.measureText(rifaDetails.price).width / 2, originY + 106 + 6);
+    ctx.fillText(raffleDetails.price, 559 - ctx.measureText(raffleDetails.price).width / 2, originY + 106 + 6);
 
     // Logo
     ctx.drawImage(logo, 595 - 70, originY + 1, 70, 70);
 }
 
-self.onmessage = async (event: MessageEvent<{ rifaDetails: rifaDetailsType }>) => {
-    const { rifaDetails } = event.data;
+self.onmessage = async (event: MessageEvent<{ raffleDetails: raffleDetailsType }>) => {
+    const { raffleDetails } = event.data;
 
     const offscreenCanvas = new OffscreenCanvas(595, 842);
     setDPI(offscreenCanvas, 300);
@@ -93,15 +103,20 @@ self.onmessage = async (event: MessageEvent<{ rifaDetails: rifaDetailsType }>) =
     });
 
     // Load logo
-    const logo = await createImageBitmap(new Blob([rifaDetails.logo], { type: 'image/png' }));
+    const logo = await createImageBitmap(new Blob([raffleDetails.logo], { type: 'image/png' }));
 
+    // Load font
+    const f = new FontFace("OpenSans", await (await fetch(OpenSans)).arrayBuffer());
+    await f.load();
+    self.fonts.add(f);
+    
     // Create all the pages
-    let rifaNumber = 0;
-    for (let i = 0; i < rifaDetails.quantity; i++) {
+    let raffleNumber = 0;
+    for (let i = 0; i < raffleDetails.quantity; i++) {
         for (let i = 0; i < 5; i++) {
-            rifaNumber++;
-            drawCard(ctx, i * 146, rifaNumber.toString());
-            drawInformation(ctx, i * 146, rifaDetails, logo)
+            raffleNumber++;
+            drawCard(ctx, i * 146, raffleNumber.toString());
+            drawInformation(ctx, i * 146, raffleDetails, logo)
         }
 
         // Add page to PDF
@@ -109,12 +124,21 @@ self.onmessage = async (event: MessageEvent<{ rifaDetails: rifaDetailsType }>) =
         const bytes = await blob.arrayBuffer();
         const pdfBytes = new Uint8Array(bytes);
         doc.addImage(pdfBytes, 'PNG', 0, 0, 210, 297);
-        if (i < rifaDetails.quantity - 1) doc.addPage();
+        if (i < raffleDetails.quantity - 1) doc.addPage();
 
         // Clear canvas (again)
         ctx.clearRect(0, 0, 595, 842);
+
+        // Send raffleNumber (for progrss bar)
+        self.postMessage({
+            type: 'raffleNumber',
+            content: raffleNumber
+        });
     }
 
     // Send PDF to the main thread
-    self.postMessage(doc.output('arraybuffer'));
+    self.postMessage({
+        type: 'file',
+        content: doc.output('arraybuffer')
+    });
 };

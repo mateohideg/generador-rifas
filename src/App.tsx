@@ -1,18 +1,21 @@
-import { createSignal, onCleanup } from 'solid-js'
+import { createEffect, createSignal, onCleanup } from 'solid-js'
+import { AppBar, Box, Button, Dialog, DialogContent, DialogContentText, DialogTitle, LinearProgress, Stack, TextField, Toolbar, Typography } from "@suid/material"
 import { save, open } from '@tauri-apps/api/dialog';
 import { writeBinaryFile, readBinaryFile } from '@tauri-apps/api/fs';
 
 function App() {
-
   const [quantity, setQuantity] = createSignal(1);
   const [organizationName, setOrganizationName] = createSignal('');
-  const [rifaName, setRifaName] = createSignal('');
+  const [raffleName, setRaffleName] = createSignal('');
   const [price, setPrice] = createSignal('');
   const [firstPrize, setFirstPrize] = createSignal('');
   const [secondPrize, setSecondPrize] = createSignal('');
   const [thirdPrize, setThirdPrize] = createSignal('');
   const [logo, setLogo] = createSignal<Uint8Array>();
   const [logoName, setLogoName] = createSignal('');
+
+  const [savingDialog, setSavingDialog] = createSignal(false);
+  const [progress, setProgress] = createSignal(0);
 
   // Set up Web Worker
   const [worker, setWorker] = createSignal<Worker | null>(null);
@@ -26,16 +29,61 @@ function App() {
     }
   });
 
+  createEffect(() => {
+    worker()!.onmessage = async (event) => {
+      if (event.data.type === 'raffleNumber') {
+        setProgress(Math.round(event.data.content / (quantity() * 5) * 100));
+      } else if (event.data.type === 'file') {
+        // Save file
+        const filePath = await save({
+          filters: [{
+            name: 'PDF',
+            extensions: ['pdf']
+          }]
+        });
+        if (filePath) await writeBinaryFile(filePath, event.data.content);
+
+        // Clean up
+        setQuantity(1);
+        setOrganizationName('');
+        setRaffleName('');
+        setPrice('');
+        setFirstPrize('');
+        setSecondPrize('');
+        setThirdPrize('');
+        setLogo(undefined);
+        setLogoName('');
+        setProgress(0);
+
+        // Close dialog
+        setSavingDialog(false);
+      }
+    }
+  }, []);
+
   return (
     <>
-      <form class="container mx-auto p-4 flex flex-col" onSubmit={async () => {
+      <Box sx={{ flexGrow: 1 }}>
+        <AppBar position="static">
+          <Toolbar>
+            <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
+              Generador Rifas PS (5 rifas por página)
+            </Typography>
+          </Toolbar>
+        </AppBar>
+      </Box>
+
+      <Stack component="form" p={2} onSubmit={async () => {
         if (worker()) {
+          // Open dialog
+          setSavingDialog(true);
+
           // Send data to the Web Worker
           worker()?.postMessage({
-            rifaDetails: {
+            raffleDetails: {
               quantity: quantity(),
               organizationName: organizationName(),
-              rifaName: rifaName(),
+              raffleName: raffleName(),
               firstPrize: firstPrize(),
               secondPrize: secondPrize(),
               thirdPrize: thirdPrize(),
@@ -43,44 +91,19 @@ function App() {
               logo: logo()
             }
           });
-
-          worker()!.onmessage = async (event) => {
-            // Save file
-            const filePath = await save({
-              filters: [{
-                name: 'PDF',
-                extensions: ['pdf']
-              }]
-            });
-            if (filePath) await writeBinaryFile(filePath, event.data);
-
-            // Clean up
-            setQuantity(1);
-            setOrganizationName('');
-            setRifaName('');
-            setPrice('');
-            setFirstPrize('');
-            setSecondPrize('');
-            setThirdPrize('');
-            setLogo(undefined);
-            setLogoName('')
-          }
         }
       }} method="dialog">
-        <h1 class="text-4xl mb-4">Generador Rifas PS</h1>
-
-        <label for="quantity">Cantidad de páginas* | <b>5 rifas por página</b> </label>
-        <input type="number" id="quantity" name="quantity" class="border p-2 mb-4" onChange={(event) => {
+        <TextField type="number" label="Cantidad de páginas" margin="normal" onChange={(event) => {
           const value = Number(event.currentTarget.value);
           if (value >= 1 && !isNaN(value)) {
             setQuantity(value);
           }
         }} value={quantity()} required />
+        <TextField type="text" label="Nombre de la organización" margin="normal" onChange={(event) => setOrganizationName(event.currentTarget.value)} value={organizationName()} required />
 
-        <label for="organizationName">Nombre de la organización* </label>
-        <input type="text" id="organizationName" name="organizationName" class="border p-2 mb-4" onChange={(event) => setOrganizationName(event.currentTarget.value)} value={organizationName()} required />
-
-        <input type="button" value={!logo() ? 'Elegir logo*' : 'Seleccionado: ' + logoName()} id="logo" name="logo" class={'mb-4 border rounded p-2 text-white ' + (logo() ? 'bg-cyan-500 hover:bg-cyan-600 active:bg-cyan-700' : 'bg-gray-500 hover:bg-gray-600 active:bg-gray-700')} onClick={async () => {
+        <Button variant="outlined" sx={{
+          marginTop: '8px'
+        }} onClick={async () => {
           // Request open dialog
           const selected = await open({
             filters: [{
@@ -94,28 +117,30 @@ function App() {
             setLogo(file);
             setLogoName(selected);
           });
-        }} />
+        }}>{!logo() ? 'Elegir logo *' : 'Seleccionado: ' + logoName()}</Button>
         <input type="text" value={logoName()} required hidden />
 
-        <label for="rifaName">Nombre de la rifa* </label>
-        <input type="text" id="rifaName" name="rifaName" class="border p-2 mb-4" onChange={(event) => setRifaName(event.currentTarget.value)} value={rifaName()} required />
+        <TextField type="text" label="Nombre de la rifa" margin="normal" onChange={(event) => setRaffleName(event.currentTarget.value)} value={raffleName()} required />
+        <TextField type="text" label="Precio" margin="normal" onChange={(event) => setPrice(event.currentTarget.value)} value={price()} required />
+        <TextField type="text" label="Primer premio" margin="normal" onChange={(event) => setFirstPrize(event.currentTarget.value)} value={firstPrize()} required />
+        <TextField type="text" label="Segundo premio" margin="normal" onChange={(event) => setSecondPrize(event.currentTarget.value)} value={secondPrize()} required />
+        <TextField type="text" label="Tercer premio" margin="normal" onChange={(event) => setThirdPrize(event.currentTarget.value)} value={thirdPrize()} required />
+        <Button type="submit" variant="contained" disabled={!(quantity() && organizationName() && raffleName() && price() && firstPrize() && secondPrize() && thirdPrize() && logo())}>Guardar PDF</Button>
+      </Stack>
 
-        <label for="price">Precio* </label>
-        <input type="text" id="price" name="price" class="border p-2 mb-4" onChange={(event) => setPrice(event.currentTarget.value)} value={price()} required />
-
-        <label for="firstPrize">Primer premio* </label>
-        <input type="text" id="firstPrize" name="firstPrize" class="border p-2 mb-4" onChange={(event) => setFirstPrize(event.currentTarget.value)} value={firstPrize()} required />
-
-        <label for="secondPrize">Segundo premio* </label>
-        <input type="text" id="secondPrize" name="secondPrize" class="border p-2 mb-4" onChange={(event) => setSecondPrize(event.currentTarget.value)} value={secondPrize()} required />
-
-        <label for="thirdPrize">Tercer premio* </label>
-        <input type="text" id="thirdPrize" name="thirdPrize" class="border p-2" onChange={(event) => setThirdPrize(event.currentTarget.value)} value={thirdPrize()} required />
-
-        <input type="submit" value="Guardar PDF" class={'border rounded-lg p-4 m-4 text-white ' + ((quantity() && organizationName() && rifaName() && price() && firstPrize() && secondPrize() && thirdPrize() && logo()) ? 'bg-teal-500 hover:bg-teal-600 active:bg-teal-700' : 'bg-red-500 hover:bg-red-600 active:bg-red-700')} />
-      </form>
+      <Dialog open={savingDialog()}>
+        <DialogTitle>
+          Creando archivo...
+        </DialogTitle>
+        <DialogContent>
+          <LinearProgress variant="determinate" value={progress()} />
+          <DialogContentText>
+            {progress()}%
+          </DialogContentText>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
 
-export default App
+export default App;

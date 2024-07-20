@@ -1,5 +1,6 @@
-import { defineConfig } from 'vite'
-import solid from 'vite-plugin-solid'
+import { defineConfig } from 'vite';
+import solid from 'vite-plugin-solid';
+import suidPlugin from "@suid/vite-plugin";
 
 export default defineConfig({
   // prevent vite from obscuring rust errors
@@ -18,8 +19,8 @@ export default defineConfig({
     // produce sourcemaps for debug builds
     sourcemap: !!process.env.TAURI_DEBUG,
   },
-  plugins: [solid()],
+  plugins: [suidPlugin(), solid()],
   worker: {
     format: 'es'
   }
-})
+});
