@@ -4,4 +4,7 @@ import suidPlugin from "@suid/vite-plugin";
 
 export default defineConfig({
   plugins: [suidPlugin(), solid()],
+  worker: {
+    format: 'es'
+  }
 });
