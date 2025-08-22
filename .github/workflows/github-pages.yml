@@ -23,12 +23,14 @@ jobs:
       run: npm install --force
 
     - name: Build
+      env:
+        GITHUB_ACTIONS_BASE: "/generador-rifas/"
       run: npm run build
 
     - name: Upload Artifact
       uses: actions/upload-pages-artifact@v4.0.0
       with:
-        path: dist/
+        path: "dist/"
 
   deploy:
     permissions:
