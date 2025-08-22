@@ -19,10 +19,11 @@ jobs:
       with:
         node-version: "22.x"
 
+    - name: Install Dependencies
+      run: npm install --force
+
     - name: Build
-      run: |
-        npm install --force
-        npm build
+      run: npm run build
 
     - name: Upload Artifact
       uses: actions/upload-pages-artifact@v4.0.0
