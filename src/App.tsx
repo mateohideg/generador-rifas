@@ -1,7 +1,5 @@
 import { createEffect, createSignal, onCleanup } from 'solid-js'
 import { AppBar, Box, Button, Dialog, DialogContent, DialogContentText, DialogTitle, LinearProgress, Stack, TextField, Toolbar, Typography } from "@suid/material"
-import { save, open } from '@tauri-apps/api/dialog';
-import { writeBinaryFile, readBinaryFile } from '@tauri-apps/api/fs';
 
 function App() {
   const [quantity, setQuantity] = createSignal(1);
@@ -11,8 +9,7 @@ function App() {
   const [firstPrize, setFirstPrize] = createSignal('');
   const [secondPrize, setSecondPrize] = createSignal('');
   const [thirdPrize, setThirdPrize] = createSignal('');
-  const [logo, setLogo] = createSignal<Uint8Array>();
-  const [logoName, setLogoName] = createSignal('');
+  const [logo, setLogo] = createSignal<File>();
   const [savingDialog, setSavingDialog] = createSignal(false);
 
   // Set up Web Workers
@@ -59,18 +56,30 @@ function App() {
           });
           if (completedWorkers().length === workers().length) {
             worker.postMessage({
-              completedWorkers: completedWorkers()
+              completedWorkers: completedWorkers(),
+              totalPages: quantity()
             });
           }
         } else if (event.data.type === 'file') {
           // Save file
-          const filePath = await save({
-            filters: [{
-              name: 'PDF',
-              extensions: ['pdf']
-            }]
-          });
-          if (filePath) await writeBinaryFile(filePath, event.data.content);
+          console.log(event.data.content);
+          const blobURL = URL.createObjectURL(new Blob([event.data.content]));
+
+          // Create download A
+          const downloadA = document.createElement('a');
+          downloadA.href = blobURL;
+          downloadA.download = `Rifas #${Date.now()}.pdf`;
+          downloadA.style.display = 'none';
+          document.body.append(downloadA);
+
+          // Click it
+          downloadA.click();
+
+          // Remove the download A
+          setTimeout(() => {
+            URL.revokeObjectURL(blobURL);
+            downloadA.remove();
+          }, 1000);
 
           // Clean up
           setQuantity(1);
@@ -81,7 +90,6 @@ function App() {
           setSecondPrize('');
           setThirdPrize('');
           setLogo(undefined);
-          setLogoName('');
           setProgressArray([]);
 
           // Close dialog
@@ -97,7 +105,7 @@ function App() {
         <AppBar position="static">
           <Toolbar>
             <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-              Generador Rifas PS (5 rifas por página)
+              Generador Rifas (5 rifas por página)
             </Typography>
           </Toolbar>
         </AppBar>
@@ -137,24 +145,12 @@ function App() {
         }} value={quantity()} required />
         <TextField type="text" label="Nombre de la organización" margin="normal" onChange={(event) => setOrganizationName(event.currentTarget.value)} value={organizationName()} required />
 
-        <Button variant="outlined" sx={{
+        <Button component="label" variant="outlined" sx={{
           marginTop: '8px'
-        }} onClick={async () => {
-          // Request open dialog
-          const selected = await open({
-            filters: [{
-              name: 'Image',
-              extensions: ['png']
-            }]
-          });
-
-          // Open file and use a text input to validate the form
-          if (typeof selected === 'string') readBinaryFile(selected).then(file => {
-            setLogo(file);
-            setLogoName(selected);
-          });
-        }}>{!logo() ? 'Elegir logo *' : 'Seleccionado: ' + logoName()}</Button>
-        <input type="text" value={logoName()} required hidden />
+        }}>
+          {!logo() ? 'Elegir logo *' : 'Seleccionado: ' + logo()?.name}
+          <input type="file" accept="image/png" onInput={(event) => setLogo(event.currentTarget.files ? event.currentTarget.files[0] : undefined)} required hidden />
+        </Button>
 
         <TextField type="text" label="Nombre de la rifa" margin="normal" onChange={(event) => setRaffleName(event.currentTarget.value)} value={raffleName()} required />
         <TextField type="text" label="Precio" margin="normal" onChange={(event) => setPrice(event.currentTarget.value)} value={price()} required />

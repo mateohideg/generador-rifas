@@ -6,7 +6,7 @@ interface raffleDetailsType {
   secondPrize: string,
   thirdPrize: string,
   price: string,
-  logo: Uint8Array
+  logo: File
 };
 
 interface Window {

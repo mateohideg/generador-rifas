@@ -89,9 +89,9 @@ self.onmessage = async (event: MessageEvent<{
     startPage: number; endPage: number; raffleDetails: raffleDetailsType; completedWorkers?: {
         index: number,
         content: ArrayBuffer
-    }[]
+    }[], totalPages?: number
 }>) => {
-    if (event.data.completedWorkers) {
+    if (event.data.completedWorkers && event.data.totalPages) {
         const mergedPdf = await PDFDocument.create();
 
         for (const pdfBuffer of event.data.completedWorkers.sort((a, b) => a.index - b.index).map(x => x.content)) {
@@ -101,6 +101,8 @@ self.onmessage = async (event: MessageEvent<{
                 mergedPdf.addPage(page);
             }
         }
+        
+        console.log(mergedPdf.getPageCount(), event.data.totalPages)
 
         const mergedPdfFile = await mergedPdf.save();
 
@@ -130,7 +132,7 @@ self.onmessage = async (event: MessageEvent<{
     });
 
     // Load logo
-    const logo = await createImageBitmap(new Blob([raffleDetails.logo], { type: 'image/png' }));
+    const logo = await createImageBitmap(new Blob([await raffleDetails.logo.arrayBuffer()], { type: 'image/png' }));
 
     // Load font
     const f = new FontFace("OpenSans", await (await fetch(OpenSans)).arrayBuffer());

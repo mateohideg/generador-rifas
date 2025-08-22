@@ -1,7 +1,7 @@
-# Generador Rifas PS
+# Generador Rifas
 
-Esta aplicación web (empaquetada con Tauri) tiene el objetivo de ayudar con la creación de "rifas".
+Esta aplicación web tiene el objetivo de ayudar con la creación de "rifas".
 
-## Instalación
+## Utilización
 
-Descargue la versión correspondiente a su sistema operativo [aquí](https://github.com/mateohideg/rifa-ps/releases).
+https://mateohideg.github.io/generador-rifas
