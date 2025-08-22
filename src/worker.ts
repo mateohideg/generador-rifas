@@ -101,8 +101,6 @@ self.onmessage = async (event: MessageEvent<{
                 mergedPdf.addPage(page);
             }
         }
-        
-        console.log(mergedPdf.getPageCount(), event.data.totalPages)
 
         const mergedPdfFile = await mergedPdf.save();
 

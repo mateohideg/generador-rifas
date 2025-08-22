@@ -62,7 +62,6 @@ function App() {
           }
         } else if (event.data.type === 'file') {
           // Save file
-          console.log(event.data.content);
           const blobURL = URL.createObjectURL(new Blob([event.data.content]));
 
           // Create download A
